@@ -18,7 +18,48 @@ interface AuthUser {
   sub: string;
 }
 
+const STATUS_CONFIG: Record<
+  string,
+  { label: string; color: string; dot: string; bg: string }
+> = {
+  COMPLETE: {
+    label: "Complete",
+    color: "text-white/85",
+    dot: "bg-white/60",
+    bg: "bg-white/[0.05] border-white/[0.1]",
+  },
+  PENDING: {
+    label: "Pending",
+    color: "text-white/75",
+    dot: "bg-white/55",
+    bg: "bg-white/[0.05] border-white/[0.1]",
+  },
+  REJECTED: {
+    label: "Rejected",
+    color: "text-red-300",
+    dot: "bg-red-300",
+    bg: "bg-red-400/12 border-red-400/30",
+  },
+  OPEN: {
+    label: "Open",
+    color: "text-white/70",
+    dot: "bg-white/55",
+    bg: "bg-white/[0.045] border-white/[0.1]",
+  },
+};
 
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.OPEN;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${cfg.color} ${cfg.bg}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
 
 export default function Dashboard() {
   const router = useRouter();
@@ -26,151 +67,215 @@ export default function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
-    const fetchUserAndRooms = async () => {
+    async function init() {
       try {
-        // Check if user is authenticated
         const userRes = await fetch("/api/auth/me");
+
         if (!userRes.ok) {
           router.replace("/");
           return;
         }
 
-        const userData = await userRes.json();
-        setUser(userData);
+        setUser(await userRes.json());
 
-        // Fetch rooms
         const roomsRes = await fetch("/api/rooms");
+
         if (roomsRes.ok) {
-          const roomsData = await roomsRes.json();
-          setRooms(roomsData);
+          setRooms(await roomsRes.json());
         }
       } catch (error) {
-        console.error("Error fetching user/rooms:", error);
+        console.error(error);
       } finally {
         setLoading(false);
       }
-    };
+    }
 
-    fetchUserAndRooms();
+    void init();
   }, [router]);
 
-  const signOut = async () => {
+  function signOut() {
     window.location.href = "/auth/logout";
-    router.push("/");
-  };
+  }
 
-  const handleJoin = async (event: React.FormEvent<HTMLFormElement>) => {
+  async function handleJoin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     if (!joinCode.trim()) return;
-    
+
+    setJoining(true);
+
     try {
       const res = await fetch("/api/rooms/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomCode: joinCode }),
+        body: JSON.stringify({ roomCode: joinCode.trim().toUpperCase() }),
       });
 
       if (res.ok) {
         const member = await res.json();
+
         setJoinCode("");
-        // Add the room to the list if not already there
-        const roomRes = await fetch("/api/rooms");
-        if (roomRes.ok) {
-          const roomsData = await roomRes.json();
-          setRooms(roomsData);
+
+        const roomsRes = await fetch("/api/rooms");
+        if (roomsRes.ok) {
+          setRooms(await roomsRes.json());
         }
+
         router.push(`/room/${member.room_id}`);
       } else {
-        alert("Invalid room code");
+        alert("Room not found. Check the code and try again.");
       }
     } catch (error) {
-      console.error("Error joining room:", error);
+      console.error(error);
+      alert("Failed to join room.");
+    } finally {
+      setJoining(false);
     }
-  };
-
-  const goToCreate = () => {
-    router.push("/room/create");
-  };
+  }
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-        <p>Loading...</p>
+      <main className="flex min-h-screen items-center justify-center bg-black">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" />
       </main>
     );
   }
 
-  return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-16 sm:px-10 lg:px-0">
-        <div className="mb-10 flex flex-col gap-4 rounded-4xl border border-white/10 bg-white/5 p-10 shadow-2xl shadow-black/20 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Dashboard</p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight">Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : "!"}</h1>
-            <p className="mt-3 max-w-2xl text-zinc-300">Create a new room or join an existing room with a 6-digit code shared by your team.</p>
-          </div>
-          <button onClick={signOut} className="rounded-3xl border border-white/10 bg-zinc-900/80 px-5 py-3 text-sm transition hover:bg-zinc-800">
-            Sign out
-          </button>
-        </div>
+  const firstName = user?.name?.split(" ")[0] ?? "there";
 
-        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-          <div className="rounded-4xl border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20">
-            <h2 className="text-2xl font-semibold">Create a room</h2>
-            <p className="mt-3 text-zinc-300">Start a new async standup and share the generated code with teammates.</p>
-            <button onClick={goToCreate} className="mt-6 inline-flex rounded-3xl bg-cyan-500 px-6 py-3 font-semibold text-zinc-950 transition hover:bg-cyan-400">
-              Create room
+  return (
+    <main className="min-h-screen bg-black text-white">
+      <div className="mx-auto max-w-5xl px-6 py-8 sm:px-10">
+        <header className="mb-14 flex items-center justify-between border-b border-white/[0.1] pb-6">
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="text-lg font-semibold tracking-tight text-white"
+          >
+            Silent<span className="text-white/65">Room</span>
+          </button>
+
+          <div className="flex items-center gap-3">
+            {user?.picture && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.picture}
+                alt=""
+                className="h-8 w-8 rounded-full ring-1 ring-white/20"
+              />
+            )}
+
+            <button
+              onClick={signOut}
+              className="rounded-full border border-white/[0.14] bg-white/[0.035] px-4 py-2 text-xs font-medium text-white/60 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              Sign out
             </button>
           </div>
+        </header>
 
-          <div className="rounded-4xl border border-white/10 bg-zinc-900/80 p-8 shadow-xl shadow-black/20">
-            <h2 className="text-2xl font-semibold">Join a room</h2>
-            <p className="mt-3 text-zinc-300">Enter the 6-digit room code from your teammate.</p>
-            <form onSubmit={handleJoin} className="mt-6 flex flex-col gap-4">
-              <input
-                value={joinCode}
-                onChange={(event) => setJoinCode(event.target.value)}
-                placeholder="123456"
-                className="rounded-3xl border border-white/10 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
-              />
-              <button type="submit" className="rounded-3xl bg-cyan-500 px-6 py-3 font-semibold text-zinc-950 transition hover:bg-cyan-400">
-                Join room
-              </button>
-            </form>
+        <section className="mb-12">
+          <p className="mb-3 text-sm text-white/50">Dashboard</p>
+
+          <h1 className="max-w-[12ch] text-5xl font-semibold tracking-[-0.04em] text-white sm:text-6xl">
+            Good to see you, {firstName}.
+          </h1>
+
+          <p className="mt-5 max-w-[42ch] text-base leading-7 text-white/50">
+            Create a room or join one with a code from your team.
+          </p>
+        </section>
+
+        <section className="mb-14 grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => router.push("/room/create")}
+            className="group flex min-h-[132px] items-center justify-between rounded-3xl border border-white/[0.1] bg-white/[0.035] p-6 text-left transition hover:border-white/[0.18] hover:bg-white/[0.06]"
+          >
+            <div>
+              <p className="text-lg font-medium tracking-[-0.01em] text-white">
+                Create a room
+              </p>
+              <p className="mt-2 max-w-[28ch] text-sm leading-6 text-white/45">
+                Start a new async standup.
+              </p>
+            </div>
+
+            <span className="text-2xl font-light text-white/50 transition group-hover:text-white">
+              +
+            </span>
+          </button>
+
+          <form
+            onSubmit={handleJoin}
+            className="flex min-h-[132px] items-center gap-3 rounded-3xl border border-white/[0.1] bg-white/[0.035] p-6 transition hover:border-white/[0.18] hover:bg-white/[0.06]"
+          >
+            <input
+              value={joinCode}
+              onChange={(event) => setJoinCode(event.target.value)}
+              placeholder="Room code"
+              maxLength={6}
+              className="min-w-0 flex-1 rounded-2xl border border-white/[0.15] bg-black px-4 py-3 text-sm uppercase tracking-normal text-white outline-none placeholder:normal-case placeholder:text-white/40 focus:border-white/30"
+            />
+
+            <button
+              type="submit"
+              disabled={joining || !joinCode.trim()}
+              className="rounded-2xl bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {joining ? "..." : "Join"}
+            </button>
+          </form>
+        </section>
+
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-white/50">Your rooms</h2>
+            <span className="text-xs text-white/40">{rooms.length} total</span>
           </div>
-        </div>
 
-        <div className="mt-8 rounded-4xl border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20">
-          <h2 className="text-2xl font-semibold">Your rooms</h2>
-          {rooms.length ? (
-            <div className="mt-6 grid gap-4">
+          {rooms.length === 0 ? (
+            <div className="rounded-3xl border border-white/[0.1] bg-white/[0.035] p-12 text-center">
+              <p className="text-sm text-white/45">
+                No rooms yet. Create one to get started.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {rooms.map((room) => (
                 <button
                   key={room.id}
                   onClick={() => router.push(`/room/${room.id}`)}
-                  className="rounded-3xl border border-white/10 bg-zinc-950/80 px-6 py-5 text-left transition hover:bg-zinc-900"
+                  className="group flex min-h-[180px] flex-col rounded-3xl border border-white/[0.1] bg-white/[0.035] p-5 text-left transition hover:border-white/[0.18] hover:bg-white/[0.06]"
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Room code</p>
-                      <p className="mt-2 text-2xl font-semibold">{room.code}</p>
-                    </div>
-                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.25em] text-zinc-200">
-                      View
-                    </span>
+                  <div className="mb-5 flex items-start justify-between gap-2">
+                    <StatusBadge status={room.status} />
+
+                    {room.code && (
+                      <span className="rounded-lg border border-white/[0.1] bg-black px-2 py-1 font-mono text-xs text-white/60">
+                        {room.code}
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-4 text-zinc-300">{room.name}</p>
-                  <p className="mt-2 text-sm text-zinc-500">{room.prompt}</p>
+
+                  <p className="text-base font-medium tracking-[-0.01em] text-white">
+                    {room.name}
+                  </p>
+
+                  <p className="mt-2 line-clamp-2 max-w-[32ch] text-sm leading-6 text-white/45">
+                    {room.prompt}
+                  </p>
+
+                  <div className="mt-auto pt-5 text-xs text-white/45 transition group-hover:text-white/80">
+                    Open →
+                  </div>
                 </button>
               ))}
             </div>
-          ) : (
-            <p className="mt-6 text-zinc-300">You haven&apos;t created any rooms yet. Create one to get a shareable 6-digit code.</p>
           )}
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
