@@ -17,22 +17,27 @@ export default function CreateRoomPage() {
   const [deadline, setDeadline] = useState("");
   const [createdRoom, setCreatedRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    async function checkAuth() {
       const res = await fetch("/api/auth/me");
-      if (!res.ok) {
-        router.replace("/");
-      }
-    };
-    checkAuth();
+      if (!res.ok) router.replace("/");
+    }
+
+    void checkAuth();
   }, [router]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim() || !prompt.trim()) return;
+
+    if (!name.trim() || !prompt.trim()) {
+      alert("Please enter a room name and prompt.");
+      return;
+    }
 
     setLoading(true);
+
     try {
       const res = await fetch("/api/rooms", {
         method: "POST",
@@ -44,87 +49,172 @@ export default function CreateRoomPage() {
         }),
       });
 
-      if (res.ok) {
-        const room = await res.json();
-        setCreatedRoom(room);
-      } else {
-        alert("Failed to create room");
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Failed to create room");
+        return;
       }
+
+      setCreatedRoom(data);
     } catch (error) {
       console.error("Error creating room:", error);
       alert("Error creating room");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const copyCode = async () => {
+  async function copyCode() {
     if (!createdRoom) return;
     await navigator.clipboard.writeText(createdRoom.code);
-  };
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }
+
+  if (createdRoom) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
+        <section className="w-full max-w-xl rounded-[2rem] border border-white/[0.1] bg-white/[0.035] p-8 text-center shadow-2xl shadow-black">
+          <p className="text-sm text-white/45">Room created</p>
+
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em]">
+            Share this code.
+          </h1>
+
+          <p className="mx-auto mt-4 max-w-[36ch] text-sm leading-6 text-white/45">
+            Send this code to your team so they can join and submit their voice responses.
+          </p>
+
+          <div className="mt-8 rounded-3xl border border-white/[0.1] bg-black px-6 py-6">
+            <p className="text-xs uppercase tracking-wide text-white/30">Room code</p>
+            <p className="mt-3 font-mono text-4xl font-semibold tracking-[0.22em] text-white">
+              {createdRoom.code}
+            </p>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button
+              onClick={copyCode}
+              className="rounded-full border border-white/[0.14] bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              {copied ? "Copied" : "Copy code"}
+            </button>
+
+            <button
+              onClick={() => router.push(`/room/${createdRoom.id}`)}
+              className="rounded-full bg-white px-6 py-3 text-sm font-medium text-black transition hover:bg-white/90"
+            >
+              Go to room
+            </button>
+          </div>
+
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="mt-6 text-sm text-white/35 transition hover:text-white/65"
+          >
+            Back to dashboard
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center px-6 py-16 sm:px-10 lg:px-0">
-        <div className="rounded-4xl border border-white/10 bg-white/5 p-10 shadow-2xl shadow-black/20">
-          <button onClick={() => router.push("/dashboard")} className="mb-6 inline-flex rounded-full border border-white/10 px-4 py-2 text-sm text-zinc-300 transition hover:bg-white/5">
-            ← Back to dashboard
-          </button>
+    <main className="min-h-screen bg-black text-white">
+      <section className="mx-auto max-w-3xl px-6 py-10 sm:px-10">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="mb-12 rounded-full border border-white/[0.12] bg-white/[0.03] px-4 py-2 text-sm text-white/60 transition hover:bg-white/[0.07] hover:text-white"
+        >
+          ← Back to dashboard
+        </button>
 
-          <h1 className="text-4xl font-semibold">Create a new room</h1>
-          <p className="mt-3 text-zinc-300">Enter the prompt your teammates will answer, then share the generated 6-digit room code.</p>
+        <div className="mb-10">
+          <p className="mb-3 text-sm text-white/45">New room</p>
+          <h1 className="text-5xl font-semibold tracking-[-0.04em] text-white">
+            Create a room.
+          </h1>
+          <p className="mt-5 max-w-[44ch] text-base leading-7 text-white/45">
+            Add a prompt, share the code, and collect voice responses without scheduling a meeting.
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-zinc-200">Room name</label>
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="mt-2 w-full rounded-3xl border border-white/10 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
-              />
-            </div>
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-5 rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6"
+        >
+          <div>
+            <label className="block text-sm text-white/55">Room name</label>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Weekend plans"
+              className="mt-2 w-full rounded-2xl border border-white/[0.12] bg-black px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/30"
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-200">Prompt</label>
-              <textarea
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                rows={4}
-                className="mt-2 w-full rounded-3xl border border-white/10 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
-              />
-            </div>
+          <div>
+            <label className="block text-sm text-white/55">Prompt</label>
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              rows={4}
+              placeholder="Who is free and what should we do?"
+              className="mt-2 w-full resize-none rounded-2xl border border-white/[0.12] bg-black px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/30"
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-zinc-200">Deadline (optional)</label>
-              <input
-                value={deadline}
-                onChange={(event) => setDeadline(event.target.value)}
-                type="datetime-local"
-                className="mt-2 w-full rounded-3xl border border-white/10 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
-              />
-            </div>
+          <div>
+            <label className="block text-sm text-white/55">Deadline optional</label>
 
-            <button type="submit" disabled={loading} className="inline-flex rounded-3xl bg-cyan-500 px-6 py-3 font-semibold text-zinc-950 transition hover:bg-cyan-400 disabled:opacity-50">
-              {loading ? "Creating..." : "Create room"}
-            </button>
-          </form>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-white/[0.12] bg-white/[0.03] px-4 py-3 transition hover:border-white/30 hover:bg-white/[0.06] focus-within:border-white/40">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-white/30">
+                  Date
+                </p>
+                <input
+                  type="date"
+                  value={deadline.split("T")[0] || ""}
+                  onChange={(event) => {
+                    const date = event.target.value;
+                    const time = deadline.split("T")[1] || "23:59";
+                    setDeadline(date ? `${date}T${time}` : "");
+                  }}
+                  className="w-full bg-transparent text-sm text-white outline-none [color-scheme:dark]"
+                />
+              </div>
 
-          {createdRoom ? (
-            <div className="mt-10 rounded-3xl border border-cyan-500/30 bg-cyan-500/5 p-6">
-              <h2 className="text-2xl font-semibold">Room created</h2>
-              <p className="mt-3 text-zinc-300">Share this code with teammates so they can join.</p>
-              <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
-                <span className="rounded-3xl bg-zinc-900/80 px-5 py-4 text-2xl font-semibold tracking-[0.2em] text-white">{createdRoom.code}</span>
-                <button onClick={copyCode} className="rounded-3xl bg-white/10 px-5 py-3 text-sm transition hover:bg-white/20">
-                  Copy code
-                </button>
-                <button onClick={() => router.push(`/room/${createdRoom.id}`)} className="rounded-3xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400">
-                  Go to room
-                </button>
+              <div className="rounded-2xl border border-white/[0.12] bg-white/[0.03] px-4 py-3 transition hover:border-white/30 hover:bg-white/[0.06] focus-within:border-white/40">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-white/30">
+                  Time
+                </p>
+                <input
+                  type="time"
+                  value={deadline.split("T")[1] || ""}
+                  onChange={(event) => {
+                    const time = event.target.value;
+                    const date = deadline.split("T")[0];
+                    setDeadline(date ? `${date}T${time}` : "");
+                  }}
+                  className="w-full bg-transparent text-sm text-white outline-none [color-scheme:dark]"
+                />
               </div>
             </div>
-          ) : null}
-        </div>
+
+            <p className="mt-2 text-xs text-white/30">
+              Leave empty if there’s no deadline.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !name.trim() || !prompt.trim()}
+            className="rounded-full bg-white px-6 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            {loading ? "Creating..." : "Create room"}
+          </button>
+        </form>
       </section>
     </main>
   );
