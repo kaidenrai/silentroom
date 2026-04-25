@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.19.0",
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.104.1",
     "axios": "^1.15.2",
     "next": "16.2.4",
