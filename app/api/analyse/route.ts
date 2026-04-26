@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import {
   analyzeResponses as analyzeWithGemini,
   generateSummary,
+  generateSolutions,
+  generateDynamicPrompts,
 } from "@/lib/gemini";
 import { textToSpeech } from "@/lib/elevenlabs";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { roomId } = await req.json();
+    const { roomId, mode = "solutions" } = await req.json();
 
     if (!roomId) {
       return NextResponse.json({ error: "Missing roomId" }, { status: 400 });
@@ -70,6 +72,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No responses to analyze" }, { status: 400 });
     }
 
+    // Update room status to READY_FOR_ANALYSIS
+    await supabaseAdmin
+      .from("rooms")
+      .update({ status: "READY_FOR_ANALYSIS" })
+      .eq("id", roomId);
+
     // -------------------------------
     // Get member names
     // -------------------------------
@@ -96,9 +104,81 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    // -------------------------------
-    // AI Analysis
-    // -------------------------------
+    // Generate dynamic prompts if they don't exist yet
+    const { data: existingPrompts } = await supabaseAdmin
+      .from("room_prompts")
+      .select("id")
+      .eq("room_id", roomId)
+      .limit(1);
+
+    if (!existingPrompts || existingPrompts.length === 0) {
+      try {
+        const prompts = await generateDynamicPrompts(room.prompt, transcriptsForAnalysis);
+        await supabaseAdmin
+          .from("room_prompts")
+          .insert(
+            prompts.map((p) => ({
+              room_id: roomId,
+              question: p.question,
+              category: p.category,
+              reasoning: p.reasoning,
+            }))
+          );
+      } catch (error) {
+        console.error("Failed to generate prompts:", error);
+        // Don't fail the analysis if prompts generation fails
+      }
+    }
+
+    // New workflow: Generate solutions instead of traditional analysis
+    if (mode === "solutions") {
+      try {
+        // Generate solution proposals
+        const solutions = await generateSolutions(room.prompt, transcriptsForAnalysis);
+
+        // Store solutions in database
+        const solutionRecords = solutions.map((sol) => ({
+          room_id: roomId,
+          title: sol.title,
+          description: sol.description,
+          rationale: sol.rationale,
+          pros: sol.pros,
+          cons: sol.cons,
+          implementation_difficulty: sol.implementation_difficulty,
+          estimated_effort: sol.estimated_effort,
+        }));
+
+        const { data: savedSolutions, error: solutionError } = await supabaseAdmin
+          .from("room_solutions")
+          .insert(solutionRecords)
+          .select();
+
+        if (solutionError) {
+          console.error("Error saving solutions:", solutionError);
+          return NextResponse.json({ error: solutionError.message }, { status: 500 });
+        }
+
+        // Update room status to VOTING
+        await supabaseAdmin
+          .from("rooms")
+          .update({ status: "VOTING" })
+          .eq("id", roomId);
+
+        return NextResponse.json(
+          {
+            status: "VOTING",
+            solutions: savedSolutions,
+            message: "Solutions generated. Team members can now vote.",
+          },
+          { status: 201 }
+        );
+      } catch (err) {
+        console.error("SOLUTIONS GENERATION ERROR:", err);
+        throw err;
+      }
+    }
+
+    // Legacy mode: Original analysis workflow (optional fallback)
     let analysis;
     let summaryText;
 
@@ -116,9 +196,7 @@ export async function POST(req: NextRequest) {
       throw err;
     }
 
-    // -------------------------------
     // Text-to-Speech
-    // -------------------------------
     let narrationUrl = "";
 
     try {
@@ -140,9 +218,7 @@ export async function POST(req: NextRequest) {
       console.error("TTS generation failed:", error);
     }
 
-    // -------------------------------
     // Save analysis
-    // -------------------------------
     const { data: savedAnalysis, error: saveError } = await supabaseAdmin
       .from("room_analysis")
       .insert({
@@ -164,9 +240,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: saveError.message }, { status: 500 });
     }
 
-    // -------------------------------
     // Update room status
-    // -------------------------------
     await supabaseAdmin
       .from("rooms")
       .update({ status: analysis.status })

@@ -51,7 +51,9 @@ export async function GET(
 
     return NextResponse.json({
       room,
+      user,
       membership,
+      members: members || [],
       responses: responses || [],
       hasSubmitted,
       allSubmitted,

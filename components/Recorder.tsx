@@ -5,9 +5,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 interface RecorderProps {
   maxSeconds?: number;
   onSubmit: (audioBlob: Blob) => void;
+  onRecordingStart?: () => void;
 }
 
-export default function Recorder({ maxSeconds = 90, onSubmit }: RecorderProps) {
+export default function Recorder({ maxSeconds = 90, onSubmit, onRecordingStart }: RecorderProps) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export default function Recorder({ maxSeconds = 90, onSubmit }: RecorderProps) {
     mediaRecorderRef.current = mediaRecorder;
 
     setRecording(true);
+    onRecordingStart?.();
     setSeconds(0);
     setAudioUrl(null);
     setBlob(null);

@@ -4,6 +4,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 const client = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = client.getGenerativeModel({ model: "gemma-3-27b-it" });
+
 export interface AnalysisResult {
   satisfaction_score: number;
   status: "COMPLETE" | "PENDING" | "REJECTED";
@@ -17,6 +18,23 @@ export interface AnalysisResult {
   meeting_needed: boolean;
   suggested_attendees: string[];
   suggested_agenda: string;
+}
+
+export interface DynamicPrompt {
+  id: string;
+  question: string;
+  category: string;
+  reasoning: string;
+}
+
+export interface SolutionProposal {
+  title: string;
+  description: string;
+  rationale: string;
+  pros: string[];
+  cons: string[];
+  implementation_difficulty: "low" | "medium" | "high";
+  estimated_effort: string;
 }
 
 /**
@@ -96,6 +114,119 @@ ${responseSummary}`;
     return result.response.text();
   } catch (error) {
     console.error("Summary generation error:", error);
+    throw error;
+  }
+}
+
+/**
+ * Generate dynamic prompts/questions based on meeting description and responses
+ */
+export async function generateDynamicPrompts(
+  description: string,
+  responses?: Array<{
+    name: string;
+    transcript: string;
+  }>
+): Promise<DynamicPrompt[]> {
+  const responseContext = responses
+    ? `\n\nCurrent responses:\n${responses.map((r) => `${r.name}: ${r.transcript}`).join("\n\n")}`
+    : "";
+
+  const prompt = `Given this meeting description, generate 3-4 targeted follow-up questions to deepen discussion and surface solutions.
+
+Meeting Description:
+${description}${responseContext}
+
+Return ONLY a valid JSON array of objects with this exact structure:
+[
+  {
+    "id": "q1",
+    "question": "specific question",
+    "category": "problem|solution|timeline|resources|risks",
+    "reasoning": "why this question matters"
+  }
+]
+
+Focus on:
+1. Understanding root causes
+2. Identifying potential solutions
+3. Understanding constraints and timeline
+4. Gathering actionable feedback`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+
+    // Parse the JSON response
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      throw new Error("Could not parse JSON from Gemini response");
+    }
+
+    const prompts = JSON.parse(jsonMatch[0]) as DynamicPrompt[];
+    return prompts;
+  } catch (error) {
+    console.error("Dynamic prompts generation error:", error);
+    throw error;
+  }
+}
+
+/**
+ * Generate solution proposals based on responses
+ */
+export async function generateSolutions(
+  description: string,
+  responses: Array<{
+    name: string;
+    transcript: string;
+  }>
+): Promise<SolutionProposal[]> {
+  const responseSummary = responses
+    .map((r) => `${r.name}: ${r.transcript}`)
+    .join("\n\n");
+
+  const prompt = `Based on this meeting description and team responses, propose exactly 4 concrete, actionable solutions.
+
+Meeting Description:
+${description}
+
+Team Responses:
+${responseSummary}
+
+Return ONLY a valid JSON array of exactly 4 solution objects with this exact structure:
+[
+  {
+    "title": "solution name",
+    "description": "2-3 sentence explanation",
+    "rationale": "why this addresses the issues",
+    "pros": ["pro1", "pro2", "pro3"],
+    "cons": ["con1", "con2"],
+    "implementation_difficulty": "low|medium|high",
+    "estimated_effort": "e.g., 2-3 days, 1 week, etc"
+  }
+]
+
+Requirements:
+- Do not suggest another meeting or say "meet to discuss" or "schedule a meeting to decide".
+- If the issue is scheduling, recommend a specific time or concrete plan, such as "Hold the sync at 5pm Sunday".
+- If people shared availability, propose a precise option instead of asking the team to meet to decide.
+- Keep solutions distinct, realistic, and directly tied to the responses above.
+`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+
+    // Parse the JSON response
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      throw new Error("Could not parse JSON from Gemini response");
+    }
+
+    const solutions = JSON.parse(jsonMatch[0]) as SolutionProposal[];
+    return solutions;
+  } catch (error) {
+    console.error("Solutions generation error:", error);
     throw error;
   }
 }
