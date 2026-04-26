@@ -315,7 +315,21 @@ export default function Dashboard() {
     );
   }
 
-  const firstName = user?.name?.split(" ")[0] ?? "there";
+  const firstName = (() => {
+    const rawName = user?.name?.trim();
+    const rawEmail = user?.email?.trim();
+    const emailLike = rawName?.includes("@") || rawName?.includes(".");
+
+    if (rawName && !emailLike) {
+      return rawName.split(" ")[0];
+    }
+
+    if (rawEmail) {
+      return rawEmail.split("@")[0];
+    }
+
+    return "there";
+  })();
 
   return (
     <main className="min-h-screen bg-black text-white">
