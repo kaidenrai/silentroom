@@ -406,51 +406,55 @@ export default function RoomPage() {
   function summarizeResponse(transcript?: string | null) {
     if (!transcript) return "No update submitted yet.";
 
-    const normalized = transcript.trim().toLowerCase();
-    const dayMatch = normalized.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
-    const timeMatch = normalized.match(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/);
-    const availability = /\b(free|available|open|off)\b/.test(normalized);
-    const blocker = /\b(blocked|blocker|blocked by|waiting on|depend|dependency|stalled|stuck|issue|problem)\b/.test(normalized);
-    const completion = /\b(done|completed|finished|shipped|resolved|wrapped up)\b/.test(normalized);
-    const progress = /\b(working on|in progress|continue|continuing|next|starting|planning|moving forward)\b/.test(normalized);
-    const topicMatch = normalized.match(/\b(deploy|review|launch|release|testing|design|feedback|support|handoff|documentation|bug)\b/);
+    const cleaned = transcript
+      .replace(/\s+/g, " ")
+      .replace(/\b(um|uh|like|you know|so|actually|basically)\b/gi, "")
+      .trim();
 
-    if (availability && (dayMatch || timeMatch)) {
-      let summary = "Shared availability";
-      if (dayMatch) summary += ` on ${dayMatch[1]}`;
-      if (timeMatch) summary += ` around ${timeMatch[0]}`;
-      return `${summary}.`;
+    const sentences = cleaned
+      .split(/(?<=[.?!])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const keywords = [
+      "blocked",
+      "blocker",
+      "waiting on",
+      "dependency",
+      "issue",
+      "problem",
+      "available",
+      "free",
+      "on sunday",
+      "on monday",
+      "on tuesday",
+      "on wednesday",
+      "on thursday",
+      "on friday",
+      "on saturday",
+      "pm",
+      "am",
+      "done",
+      "completed",
+      "testing",
+      "review",
+      "deploy",
+      "release",
+      "design",
+    ];
+
+    const candidate = sentences.find((sentence) =>
+      keywords.some((keyword) => sentence.toLowerCase().includes(keyword))
+    );
+
+    const summary = candidate || sentences[0] || cleaned;
+    const trimmed = summary.length > 160 ? `${summary.slice(0, 157).trim()}...` : summary;
+
+    if (trimmed.split(" ").length <= 3 && sentences.length > 1) {
+      return `${sentences.slice(0, 2).join(" ")} `;
     }
 
-    if (availability) {
-      return "Shared availability and schedule preferences.";
-    }
-
-    if (blocker) {
-      const detailMatch = normalized.match(/\b(blocked by|waiting on|dependency on|issue with|problem with)\b([^,.]*)/);
-      if (detailMatch?.[2]) {
-        return `Blocked by${detailMatch[2].trim()}.`;
-      }
-      return "Reported blockers and dependencies affecting progress.";
-    }
-
-    if (completion) {
-      return topicMatch
-        ? `Completed work related to ${topicMatch[1]}.`
-        : "Reported completed progress and next steps.";
-    }
-
-    if (progress) {
-      return topicMatch
-        ? `Working on ${topicMatch[1]} with next steps in progress.`
-        : "Provided a work-in-progress update and next steps.";
-    }
-
-    if (topicMatch) {
-      return `Shared an update related to ${topicMatch[1]}.`;
-    }
-
-    return "Summarized progress and any blockers from their update.";
+    return trimmed;
   }
 
   return (
